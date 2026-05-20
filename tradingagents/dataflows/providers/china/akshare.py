@@ -1137,6 +1137,16 @@ class AKShareProvider(BaseStockDataProvider):
 
             financial_data = {}
 
+            # 三大报表的 _em 接口需要带交易所前缀(如 SH600519/SZ000001/BJ8xxxxx)，
+            # 否则返回 None 取不到财报。财务摘要接口用裸代码即可。
+            _c = str(code).zfill(6)
+            if _c.startswith(('6', '9')):
+                em_symbol = 'SH' + _c
+            elif _c.startswith(('4', '8')):
+                em_symbol = 'BJ' + _c
+            else:
+                em_symbol = 'SZ' + _c
+
             # 1. 获取主要财务指标
             try:
                 def fetch_financial_abstract():
@@ -1152,7 +1162,7 @@ class AKShareProvider(BaseStockDataProvider):
             # 2. 获取资产负债表
             try:
                 def fetch_balance_sheet():
-                    return self.ak.stock_balance_sheet_by_report_em(symbol=code)
+                    return self.ak.stock_balance_sheet_by_report_em(symbol=em_symbol)
 
                 balance_sheet = await asyncio.to_thread(fetch_balance_sheet)
                 if balance_sheet is not None and not balance_sheet.empty:
@@ -1164,7 +1174,7 @@ class AKShareProvider(BaseStockDataProvider):
             # 3. 获取利润表
             try:
                 def fetch_income_statement():
-                    return self.ak.stock_profit_sheet_by_report_em(symbol=code)
+                    return self.ak.stock_profit_sheet_by_report_em(symbol=em_symbol)
 
                 income_statement = await asyncio.to_thread(fetch_income_statement)
                 if income_statement is not None and not income_statement.empty:
@@ -1176,7 +1186,7 @@ class AKShareProvider(BaseStockDataProvider):
             # 4. 获取现金流量表
             try:
                 def fetch_cash_flow():
-                    return self.ak.stock_cash_flow_sheet_by_report_em(symbol=code)
+                    return self.ak.stock_cash_flow_sheet_by_report_em(symbol=em_symbol)
 
                 cash_flow = await asyncio.to_thread(fetch_cash_flow)
                 if cash_flow is not None and not cash_flow.empty:

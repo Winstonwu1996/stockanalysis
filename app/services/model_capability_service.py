@@ -175,11 +175,27 @@ class ModelCapabilityService:
                         # 关闭连接
                         client.close()
 
+                        # 🔧 DB 里的 llm_configs 条目可能只存了 provider/model_name/enabled,
+                        # 没带可信的能力信息 (features/capability_level/roles 常为空或默认 2)。
+                        # 若该模型在常量库 DEFAULT_MODEL_CAPABILITIES 里有权威定义, 以常量为准,
+                        # 避免空 features 被误判"不支持工具调用"、或默认等级 2 让高级模型在深度分析里被换掉。
+                        # 找不到常量定义时, 才用 DB 值, 并对缺失字段兜底 (含 TOOL_CALLING)。
+                        canonical = DEFAULT_MODEL_CAPABILITIES.get(model_name)
+                        if not canonical:
+                            _, original_model = self._parse_aggregator_model_name(model_name)
+                            if original_model:
+                                canonical = DEFAULT_MODEL_CAPABILITIES.get(original_model)
+
+                        if canonical:
+                            result = dict(canonical)
+                            result["model_name"] = config_dict.get("model_name", model_name)
+                            return result
+
                         return {
                             "model_name": config_dict.get("model_name"),
                             "capability_level": config_dict.get('capability_level', 2),
-                            "suitable_roles": roles_enum,
-                            "features": features_enum,
+                            "suitable_roles": roles_enum if roles_enum else [ModelRole.BOTH],
+                            "features": features_enum if features_enum else [ModelFeature.TOOL_CALLING],
                             "recommended_depths": config_dict.get('recommended_depths', ["快速", "基础", "标准"]),
                             "performance_metrics": config_dict.get('performance_metrics', None)
                         }

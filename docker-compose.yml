@@ -22,6 +22,8 @@ services:
       - ./data:/app/data
       # 核心分析引擎代码映射 (改 Python 代码后重启即可生效, 无需重建镜像)
       - ./tradingagents:/app/tradingagents
+      # 后端应用代码映射 (同上, 改 app/ 下代码重启即生效)
+      - ./app:/app/app
     env_file:
       - .env
     environment:

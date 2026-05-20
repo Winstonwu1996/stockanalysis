@@ -7,11 +7,27 @@ from datetime import datetime, timedelta
 from typing import List, Optional, Dict, Any
 from pathlib import Path
 
-from fastapi import APIRouter, Depends, HTTPException, Query, Response
+from fastapi import APIRouter, Depends, HTTPException, Query, Response, Header
 from fastapi.responses import FileResponse, StreamingResponse
 from pydantic import BaseModel
 
 from .auth_db import get_current_user
+
+
+async def _verify_download_auth(authorization: Optional[str], token: Optional[str]) -> bool:
+    """下载鉴权：接受 Authorization header(Bearer) 或 query 参数 token。
+    浏览器直接导航下载(由 Content-Disposition 决定文件名)无法带 header，故支持 query token。"""
+    from app.services.auth_service import AuthService
+    raw = None
+    if authorization and authorization.lower().startswith("bearer "):
+        raw = authorization.split(" ", 1)[1]
+    elif token:
+        raw = token
+    if not raw:
+        raise HTTPException(status_code=401, detail="未授权：缺少 token")
+    if not AuthService.verify_token(raw):
+        raise HTTPException(status_code=401, detail="未授权：token 无效")
+    return True
 from ..core.database import get_mongo_db
 from ..utils.timezone import to_config_tz
 import logging
@@ -429,9 +445,16 @@ async def delete_report(
 async def download_report(
     report_id: str,
     format: str = Query("markdown", description="下载格式: markdown, json, pdf, docx"),
-    user: dict = Depends(get_current_user)
+    token: Optional[str] = Query(None, description="鉴权 token(供浏览器直接导航下载用)"),
+    authorization: Optional[str] = Header(default=None),
 ):
-    """下载报告
+    """下载报告"""
+    await _verify_download_auth(authorization, token)
+    return await _download_report_impl(report_id, format)
+
+
+async def _download_report_impl(report_id: str, format: str):
+    """下载报告(已鉴权)
 
     支持的格式:
     - markdown: Markdown 格式（默认）

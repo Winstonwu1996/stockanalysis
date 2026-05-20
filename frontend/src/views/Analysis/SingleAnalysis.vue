@@ -1511,84 +1511,24 @@ const sendDiscuss = async () => {
   }
 }
 
-// 下载报告
-const downloadReport = async (format: string = 'markdown') => {
-  try {
-    if (!analysisResults.value && !currentTaskId.value) {
-      ElMessage.error('报告尚未生成，无法下载')
-      return
-    }
-
-    // 显示加载提示
-    const loadingMsg = ElMessage({
-      message: `正在生成${getFormatName(format)}格式报告...`,
-      type: 'info',
-      duration: 0
-    })
-
-    const reportId = (analysisResults.value?.id as any) || currentTaskId.value
-    const res = await fetch(`/api/reports/${reportId}/download?format=${format}`, {
-      headers: {
-        'Authorization': `Bearer ${authStore.token}`
-      }
-    })
-
-    loadingMsg.close()
-
-    if (!res.ok) {
-      let detail = `HTTP ${res.status}`
-      try {
-        const j = await res.json()
-        detail = j.detail || j.message || detail
-      } catch { /* ignore */ }
-      throw new Error(detail)
-    }
-
-    // 防御：若返回的是 JSON(错误)而非文件，不要存成乱码文件
-    const ctype = res.headers.get('content-type') || ''
-    if (ctype.includes('application/json')) {
-      const j = await res.json().catch(() => ({}))
-      throw new Error(j.detail || j.message || '报告不存在或尚未生成')
-    }
-
-    const blob = await res.blob()
-    const url = window.URL.createObjectURL(blob)
-    const a = document.createElement('a')
-    a.href = url
-    const code =
-      analysisResults.value?.stock_code ||
-      analysisResults.value?.stock_symbol ||
-      analysisResults.value?.symbol ||
-      'stock'
-    const dateStr = analysisResults.value?.analysis_date || new Date().toISOString().slice(0, 10)
-
-    // 根据格式设置文件扩展名
-    const ext = getFileExtension(format)
-    a.download = `${String(code)}_分析报告_${String(dateStr).slice(0, 10)}.${ext}`
-    a.rel = 'noopener'
-
-    document.body.appendChild(a)
-    a.click()
-    // 延迟回收：立即 revoke 会与下载产生竞态，导致文件名丢失（变成 blob UUID）
-    setTimeout(() => {
-      window.URL.revokeObjectURL(url)
-      if (a.parentNode) document.body.removeChild(a)
-    }, 1500)
-
-    ElMessage.success(`${getFormatName(format)}报告下载成功`)
-  } catch (err: any) {
-    console.error('下载报告出错:', err)
-
-    // 显示详细错误信息
-    if (err.message && err.message.includes('pandoc')) {
-      ElMessage.error({
-        message: 'PDF/Word 导出需要安装 pandoc 工具',
-        duration: 5000
-      })
-    } else {
-      ElMessage.error(`下载报告失败: ${err.message || '未知错误'}`)
-    }
+// 下载报告 —— 用浏览器直接导航到带 token 的下载链接，
+// 由服务器 Content-Disposition 头决定文件名(必带正确文件名+后缀)，
+// 彻底避开 blob+a.download 在部分环境下丢失文件名变 UUID 的问题。
+const downloadReport = (format: string = 'markdown') => {
+  const reportId = (analysisResults.value?.id as any) || currentTaskId.value
+  if (!reportId) {
+    ElMessage.error('报告尚未生成，无法下载')
+    return
   }
+  const token = authStore.token || ''
+  const url = `/api/reports/${reportId}/download?format=${encodeURIComponent(format)}&token=${encodeURIComponent(token)}`
+  const a = document.createElement('a')
+  a.href = url
+  a.style.display = 'none'
+  document.body.appendChild(a)
+  a.click()
+  setTimeout(() => { if (a.parentNode) document.body.removeChild(a) }, 1000)
+  ElMessage.success(`${getFormatName(format)}报告开始下载`)
 }
 
 // 辅助函数：获取格式名称

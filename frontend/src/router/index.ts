@@ -418,7 +418,7 @@ router.beforeEach(async (to, _from, next) => {
   // 设置页面标题
   const title = to.meta.title as string
   if (title) {
-    document.title = `${title} - TradingAgents-CN`
+    document.title = `${title} - W-Agents`
   }
 
   console.log('🚦 路由守卫检查:', {
@@ -444,6 +444,23 @@ router.beforeEach(async (to, _from, next) => {
   }
 
 
+
+  // 管理员专属页面：非管理员（会员/viewer）直接访问 → 回仪表板
+  const adminOnlyPaths = [
+    '/settings/config',
+    '/settings/database',
+    '/settings/logs',
+    '/settings/system-logs',
+    '/settings/sync',
+    '/settings/cache',
+    '/settings/usage',
+    '/settings/scheduler'
+  ]
+  if (adminOnlyPaths.some((p) => to.path.startsWith(p)) && !authStore.isAdmin) {
+    console.warn('⛔ 非管理员访问管理页，已拦截:', to.path)
+    next('/dashboard')
+    return
+  }
 
   // 如果已登录且访问登录页，重定向到仪表板
   if (authStore.isAuthenticated && to.name === 'Login') {

@@ -4,7 +4,7 @@
     <div class="welcome-section">
       <div class="welcome-content">
         <h1 class="welcome-title">
-          欢迎使用 TradingAgents-CN
+          欢迎使用 W-Agents
           <span class="version-badge">v1.0.1</span>
         </h1>
         <p class="welcome-subtitle">

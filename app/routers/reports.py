@@ -573,3 +573,126 @@ async def download_report(
     except Exception as e:
         logger.error(f"❌ 下载报告失败: {e}")
         raise HTTPException(status_code=500, detail=str(e))
+
+
+# ==================== 报告追问/讨论 ====================
+
+class DiscussMessage(BaseModel):
+    """单条追问对话消息"""
+    role: str  # "user" | "assistant"
+    content: str
+
+
+class DiscussRequest(BaseModel):
+    """报告追问请求"""
+    question: str
+    model: Optional[str] = None  # 不传则用系统默认深度模型
+    history: List[DiscussMessage] = []
+
+
+# 报告上下文最大字符数（防止超出模型上下文窗口）
+_DISCUSS_REPORT_MAX_CHARS = 40000
+# 保留的历史轮数（user+assistant 计为多条）
+_DISCUSS_MAX_HISTORY = 12
+
+
+def _invoke_discuss_llm(model: str, system_prompt: str, history: List[DiscussMessage], question: str) -> str:
+    """同步调用 LLM 完成一次追问（在线程池中执行，避免阻塞事件循环）"""
+    from app.services.simple_analysis_service import get_provider_and_url_by_model_sync
+    from tradingagents.llm_clients import create_llm_client
+    from langchain_core.messages import SystemMessage, HumanMessage, AIMessage
+
+    info = get_provider_and_url_by_model_sync(model)
+    provider = info.get("provider")
+    backend_url = info.get("backend_url")
+    api_key = info.get("api_key")
+
+    if not api_key:
+        raise ValueError(f"模型 {model}（{provider}）未配置有效的 API Key")
+
+    client = create_llm_client(
+        provider=provider,
+        model=model,
+        base_url=backend_url,
+        api_key=api_key,
+        temperature=0.3,
+    )
+    llm = client.get_llm()
+
+    messages = [SystemMessage(content=system_prompt)]
+    for m in history[-_DISCUSS_MAX_HISTORY:]:
+        if m.role == "assistant":
+            messages.append(AIMessage(content=m.content))
+        else:
+            messages.append(HumanMessage(content=m.content))
+    messages.append(HumanMessage(content=question))
+
+    result = llm.invoke(messages)
+    return getattr(result, "content", str(result))
+
+
+@router.post("/{report_id}/discuss")
+async def discuss_report(
+    report_id: str,
+    body: DiscussRequest,
+    user: dict = Depends(get_current_user)
+):
+    """针对某份报告内容进行多轮追问/讨论。
+
+    把"报告全文 + 历史对话 + 本次问题"发给所选大模型，返回针对性回答。
+    模型可每次指定（不传则用系统默认深度模型）。
+    """
+    import asyncio
+
+    question = (body.question or "").strip()
+    if not question:
+        raise HTTPException(status_code=400, detail="问题不能为空")
+
+    try:
+        db = get_mongo_db()
+        doc = await db.analysis_reports.find_one(_build_report_query(report_id))
+        if not doc:
+            raise HTTPException(status_code=404, detail="报告不存在")
+
+        # 组装报告全文作为上下文
+        from app.utils.report_exporter import report_exporter
+        report_text = report_exporter.generate_markdown_report(doc)
+        if len(report_text) > _DISCUSS_REPORT_MAX_CHARS:
+            report_text = report_text[:_DISCUSS_REPORT_MAX_CHARS] + "\n\n…（报告较长，已截断）"
+
+        stock_symbol = doc.get("stock_symbol", "该股票")
+
+        # 选择模型：请求指定 > 系统默认深度模型
+        model = (body.model or "").strip()
+        if not model:
+            try:
+                from app.core.unified_config import unified_config
+                model = unified_config.get_deep_analysis_model()
+            except Exception:
+                model = "deepseek-v4-pro"
+
+        system_prompt = (
+            f"你是一位专业的中国市场证券分析师，正在与用户讨论下面这份关于 {stock_symbol} 的分析报告。\n"
+            "请严格基于报告内容回答用户的追问；当用户质疑或挑战某个论据时，"
+            "客观说明该结论的依据、前提与不确定性，必要时指出报告可能的局限，不要编造报告中没有的数据。\n"
+            "如果问题超出报告范围或需要报告未包含的实时数据，请如实说明。全程使用中文。\n\n"
+            "===== 报告全文开始 =====\n"
+            f"{report_text}\n"
+            "===== 报告全文结束 ====="
+        )
+
+        answer = await asyncio.to_thread(
+            _invoke_discuss_llm, model, system_prompt, body.history, question
+        )
+
+        return {
+            "success": True,
+            "data": {"answer": answer, "model": model},
+            "message": "讨论成功",
+        }
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"❌ 报告追问失败: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=f"追问失败: {str(e)}")

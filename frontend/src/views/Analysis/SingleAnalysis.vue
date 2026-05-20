@@ -667,6 +667,55 @@
                   </el-dropdown>
                 </div>
 
+                <!-- 💬 追问讨论 -->
+                <div class="discuss-panel">
+                  <div class="discuss-header">
+                    <div class="discuss-title">
+                      <el-icon><ChatDotRound /></el-icon>
+                      <span>追问讨论</span>
+                      <span class="discuss-hint">对报告里的论据继续提问，AI 带着报告上下文回答</span>
+                    </div>
+                    <el-select v-model="discussModel" size="small" class="discuss-model-select">
+                      <el-option
+                        v-for="opt in discussModelOptions"
+                        :key="opt.value"
+                        :label="opt.label"
+                        :value="opt.value"
+                      />
+                    </el-select>
+                  </div>
+
+                  <div v-if="discussMessages.length" class="discuss-messages">
+                    <div
+                      v-for="(m, i) in discussMessages"
+                      :key="i"
+                      :class="['discuss-msg', m.role === 'user' ? 'is-user' : 'is-ai']"
+                    >
+                      <div class="discuss-bubble" v-html="formatReportContent(m.content)"></div>
+                    </div>
+                    <div v-if="discussLoading" class="discuss-msg is-ai">
+                      <div class="discuss-bubble discuss-loading">思考中…</div>
+                    </div>
+                  </div>
+
+                  <div class="discuss-input-row">
+                    <el-input
+                      v-model="discussInput"
+                      type="textarea"
+                      :rows="2"
+                      resize="none"
+                      placeholder="例如：报告说有技术护城河，依据是什么？会不会被高估？（Cmd/Ctrl+Enter 发送）"
+                      @keydown.enter="onDiscussKeydown"
+                    />
+                    <el-button
+                      type="primary"
+                      :loading="discussLoading"
+                      class="discuss-send-btn"
+                      @click="sendDiscuss"
+                    >发送</el-button>
+                  </div>
+                </div>
+
                 <!-- 风险提示 -->
                 <el-alert
                   type="warning"
@@ -704,6 +753,7 @@ import {
   Cpu,
   QuestionFilled,
   ArrowDown,
+  ChatDotRound,
 } from '@element-plus/icons-vue'
 import { analysisApi, type SingleAnalysisRequest } from '@/api/analysis'
 import { paperApi } from '@/api/paper'
@@ -1394,6 +1444,70 @@ const formatReportContent = (content: any) => {
     console.error('❌ [ERROR] Marked转换失败:', error)
     // 如果marked转换失败，回退到简单的文本显示
     return `<pre style="white-space: pre-wrap; font-family: inherit;">${stringContent}</pre>`
+  }
+}
+
+// ==================== 报告追问讨论 ====================
+const discussModel = ref('deepseek-v4-pro')
+const discussModelOptions = [
+  { label: 'DeepSeek V4 Pro（默认）', value: 'deepseek-v4-pro' },
+  { label: 'DeepSeek V4 Flash（更快）', value: 'deepseek-v4-flash' },
+  { label: 'Qwen Max（通义千问）', value: 'qwen-max' },
+  { label: 'Claude Sonnet 4.5', value: 'claude-sonnet-4-5-20250929' },
+]
+const discussMessages = ref<{ role: string; content: string }[]>([])
+const discussInput = ref('')
+const discussLoading = ref(false)
+
+const onDiscussKeydown = (e: KeyboardEvent) => {
+  // Cmd/Ctrl + Enter 发送；普通回车换行
+  if ((e.metaKey || e.ctrlKey) && e.key === 'Enter') {
+    e.preventDefault()
+    sendDiscuss()
+  }
+}
+
+const sendDiscuss = async () => {
+  const q = discussInput.value.trim()
+  if (!q) {
+    ElMessage.warning('请先输入你想追问的内容')
+    return
+  }
+  if (discussLoading.value) return
+
+  const reportId = (analysisResults.value?.id as any) || currentTaskId.value
+  if (!reportId) {
+    ElMessage.error('报告尚未生成，无法追问')
+    return
+  }
+
+  // 发送前的历史（不含本次问题）
+  const history = discussMessages.value.map((m) => ({ role: m.role, content: m.content }))
+  discussMessages.value.push({ role: 'user', content: q })
+  discussInput.value = ''
+  discussLoading.value = true
+
+  try {
+    const res = await fetch(`/api/reports/${reportId}/discuss`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${authStore.token}`,
+      },
+      body: JSON.stringify({ question: q, model: discussModel.value, history }),
+    })
+    const data = await res.json()
+    if (!res.ok || !data.success) {
+      throw new Error(data.detail || data.message || `HTTP ${res.status}`)
+    }
+    discussMessages.value.push({ role: 'assistant', content: data.data.answer })
+  } catch (e: any) {
+    discussMessages.value.push({
+      role: 'assistant',
+      content: `⚠️ 追问失败：${e.message || '未知错误'}`,
+    })
+  } finally {
+    discussLoading.value = false
   }
 }
 
@@ -2256,6 +2370,87 @@ onMounted(async () => {
 </script>
 
 <style lang="scss" scoped>
+/* 💬 报告追问讨论 */
+.discuss-panel {
+  margin-top: 20px;
+  padding: 16px;
+  border: 1px solid var(--el-border-color-lighter);
+  border-radius: 10px;
+  background: var(--el-fill-color-blank);
+}
+.discuss-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
+  margin-bottom: 12px;
+}
+.discuss-title {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-weight: 600;
+  font-size: 15px;
+}
+.discuss-hint {
+  font-weight: 400;
+  font-size: 12px;
+  color: var(--el-text-color-secondary);
+  margin-left: 4px;
+}
+.discuss-model-select {
+  width: 220px;
+}
+.discuss-messages {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  max-height: 420px;
+  overflow-y: auto;
+  padding: 4px 2px 12px;
+}
+.discuss-msg {
+  display: flex;
+}
+.discuss-msg.is-user {
+  justify-content: flex-end;
+}
+.discuss-msg.is-ai {
+  justify-content: flex-start;
+}
+.discuss-bubble {
+  max-width: 82%;
+  padding: 10px 14px;
+  border-radius: 12px;
+  font-size: 14px;
+  line-height: 1.6;
+  word-break: break-word;
+}
+.is-user .discuss-bubble {
+  background: var(--el-color-primary);
+  color: #fff;
+  border-bottom-right-radius: 4px;
+}
+.is-ai .discuss-bubble {
+  background: var(--el-fill-color-light);
+  color: var(--el-text-color-primary);
+  border-bottom-left-radius: 4px;
+}
+.discuss-loading {
+  color: var(--el-text-color-secondary);
+  font-style: italic;
+}
+.discuss-input-row {
+  display: flex;
+  gap: 10px;
+  align-items: stretch;
+}
+.discuss-send-btn {
+  height: auto;
+  align-self: stretch;
+}
+
 .single-analysis {
   min-height: 100vh;
   background: var(--el-bg-color-page);

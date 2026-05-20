@@ -48,9 +48,9 @@ class AnalysisParameters(BaseModel):
     include_sentiment: bool = True
     include_risk: bool = True
     language: str = "zh-CN"
-    # 模型配置
-    quick_analysis_model: Optional[str] = "qwen-turbo"
-    deep_analysis_model: Optional[str] = "qwen-max"
+    # 模型配置（默认 DeepSeek V4：主力 deepseek-v4-pro，快速 deepseek-v4-flash）
+    quick_analysis_model: Optional[str] = "deepseek-v4-flash"
+    deep_analysis_model: Optional[str] = "deepseek-v4-pro"
 
 
 class AnalysisResult(BaseModel):

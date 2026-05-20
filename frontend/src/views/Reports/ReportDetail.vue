@@ -509,8 +509,19 @@ const downloadReport = async (format: string = 'markdown') => {
     loadingMsg.close()
 
     if (!response.ok) {
-      const errorText = await response.text()
-      throw new Error(errorText || `HTTP ${response.status}`)
+      let detail = `HTTP ${response.status}`
+      try {
+        const j = await response.json()
+        detail = j.detail || j.message || detail
+      } catch { /* ignore */ }
+      throw new Error(detail)
+    }
+
+    // 防御：若返回的是 JSON(错误)而非文件，不要存成乱码文件
+    const ctype = response.headers.get('content-type') || ''
+    if (ctype.includes('application/json')) {
+      const j = await response.json().catch(() => ({}))
+      throw new Error(j.detail || j.message || '报告不存在或尚未生成')
     }
 
     const blob = await response.blob()

@@ -1536,8 +1536,19 @@ const downloadReport = async (format: string = 'markdown') => {
     loadingMsg.close()
 
     if (!res.ok) {
-      const errorText = await res.text()
-      throw new Error(errorText || `HTTP ${res.status}`)
+      let detail = `HTTP ${res.status}`
+      try {
+        const j = await res.json()
+        detail = j.detail || j.message || detail
+      } catch { /* ignore */ }
+      throw new Error(detail)
+    }
+
+    // 防御：若返回的是 JSON(错误)而非文件，不要存成乱码文件
+    const ctype = res.headers.get('content-type') || ''
+    if (ctype.includes('application/json')) {
+      const j = await res.json().catch(() => ({}))
+      throw new Error(j.detail || j.message || '报告不存在或尚未生成')
     }
 
     const blob = await res.blob()

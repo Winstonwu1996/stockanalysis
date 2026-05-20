@@ -133,16 +133,27 @@ def get_provider_and_url_by_model_sync(model_name: str) -> dict:
                     providers_collection = db.llm_providers
                     provider_doc = providers_collection.find_one({"name": provider})
 
+                    # 占位符 key 识别（避免 your-qwen-api-key 这类占位符覆盖有效的厂家 key）
+                    def _is_placeholder(k):
+                        if not k or not str(k).strip():
+                            return True
+                        s = str(k).strip().lower()
+                        if len(s) <= 10:
+                            return True
+                        if s.startswith('your') or s.startswith('sk-your') or s.endswith('-here') or s.endswith('_here'):
+                            return True
+                        if '...' in s or 'your-api-key' in s or 'api-key-here' in s or 'your_' in s:
+                            return True
+                        return False
+
                     # 🔥 确定 API Key（优先级：模型配置 > 厂家配置 > 环境变量）
                     api_key = None
-                    if model_api_key and model_api_key.strip() and model_api_key != "your-api-key":
+                    if not _is_placeholder(model_api_key):
                         api_key = model_api_key
                         logger.info(f"✅ [同步查询] 使用模型配置的 API Key")
-                    elif provider_doc and provider_doc.get("api_key"):
-                        provider_api_key = provider_doc["api_key"]
-                        if provider_api_key and provider_api_key.strip() and provider_api_key != "your-api-key":
-                            api_key = provider_api_key
-                            logger.info(f"✅ [同步查询] 使用厂家配置的 API Key")
+                    elif provider_doc and not _is_placeholder(provider_doc.get("api_key")):
+                        api_key = provider_doc["api_key"]
+                        logger.info(f"✅ [同步查询] 使用厂家配置的 API Key")
 
                     # 如果数据库中没有有效的 API Key，尝试从环境变量获取
                     if not api_key:

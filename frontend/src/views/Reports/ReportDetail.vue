@@ -495,8 +495,13 @@ const downloadReport = (format: string = 'markdown') => {
   const reportId = report.value.id
   const token = authStore.token || ''
   const url = `/api/reports/${reportId}/download?format=${encodeURIComponent(format)}&token=${encodeURIComponent(token)}`
+  // 双保险：① 普通同源链接上 a.download 可靠(blob 才不可靠) ② 服务器 Content-Disposition
+  const ext = getFileExtension(format)
+  const code = (report.value?.stock_symbol || report.value?.stock_code || 'report') as string
+  const dateStr = String(report.value?.analysis_date || report.value?.created_at || new Date().toISOString().slice(0, 10)).slice(0, 10)
   const a = document.createElement('a')
   a.href = url
+  a.download = `${code}_分析报告_${dateStr}.${ext}`
   a.style.display = 'none'
   document.body.appendChild(a)
   a.click()

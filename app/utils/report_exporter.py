@@ -630,7 +630,27 @@ pre, code {
         pdf_bytes = pdfkit.from_string(html_content, False, options=options)
 
         logger.info(f"✅ pdfkit PDF 生成成功，大小: {len(pdf_bytes)} 字节")
+
+        # 🔧 wkhtmltopdf 0.12.6 偶发生成页面树损坏的 PDF(/Pages /Count=0)，
+        # 导致 macOS 预览等阅读器报"0 页/打不开"。用 pikepdf(qpdf) 过一遍重建页面树，
+        # 保证每次都是合法可打开的 PDF。pikepdf 不可用时退回原始字节(不致命)。
+        pdf_bytes = self._normalize_pdf(pdf_bytes)
         return pdf_bytes
+
+    def _normalize_pdf(self, pdf_bytes: bytes) -> bytes:
+        """用 pikepdf 规范化 PDF(修复 wkhtmltopdf 的页面树/Count 损坏)。"""
+        try:
+            import io
+            import pikepdf
+            with pikepdf.open(io.BytesIO(pdf_bytes)) as pdf:
+                page_count = len(pdf.pages)
+                out = io.BytesIO()
+                pdf.save(out)
+                logger.info(f"✅ pikepdf 规范化完成，页数: {page_count}")
+                return out.getvalue()
+        except Exception as e:
+            logger.warning(f"⚠️ pikepdf 规范化失败({str(e)[:80]})，返回原始 PDF")
+            return pdf_bytes
 
     def generate_pdf_report(self, report_doc: Dict[str, Any]) -> bytes:
         """生成 PDF 格式报告（使用 pdfkit + wkhtmltopdf）"""

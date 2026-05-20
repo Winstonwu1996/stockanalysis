@@ -30,7 +30,15 @@ services:
       TRADINGAGENTS_LOG_LEVEL: "INFO"
       TRADINGAGENTS_LOG_DIR: "/app/logs"
       TRADINGAGENTS_LOG_FILE: "/app/logs/tradingagents.log"
-      # Docker专用数据库配置
+      # Docker专用数据库配置（覆盖 .env 里的 localhost）
+      MONGODB_HOST: "mongodb"
+      REDIS_HOST: "redis"
+      # 固定库名，避免 auto 模式按容器ID生成哈希后缀导致重启后账号"丢失"
+      MONGODB_DATABASE_SCOPE: "explicit"
+      MONGODB_DATABASE: "tradingagentscn"
+      ALLOW_SHARED_DB_IN_DEBUG: "true"
+      MONGODB_CONNECTION_STRING: mongodb://admin:tradingagents123@mongodb:27017/?authSource=admin
+      REDIS_CONNECTION_STRING: redis://:tradingagents123@redis:6379
       TRADINGAGENTS_MONGODB_URL: mongodb://admin:tradingagents123@mongodb:27017/tradingagents?authSource=admin
       TRADINGAGENTS_REDIS_URL: redis://:tradingagents123@redis:6379
       TRADINGAGENTS_CACHE_TYPE: redis

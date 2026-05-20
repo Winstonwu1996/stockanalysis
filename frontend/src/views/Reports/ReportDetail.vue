@@ -529,14 +529,20 @@ const downloadReport = async (format: string = 'markdown') => {
     const a = document.createElement('a')
     a.href = url
 
-    // 根据格式设置文件扩展名
+    // 根据格式设置文件扩展名（含兜底，避免文件名为空导致浏览器用 blob UUID 命名）
     const ext = getFileExtension(format)
-    a.download = `${currentReport.stock_symbol}_分析报告_${currentReport.analysis_date || currentReport.created_at}.${ext}`
+    const code = currentReport.stock_symbol || currentReport.stock_code || 'report'
+    const dateStr = String(currentReport.analysis_date || currentReport.created_at || new Date().toISOString().slice(0, 10)).slice(0, 10)
+    a.download = `${code}_分析报告_${dateStr}.${ext}`
+    a.rel = 'noopener'
 
     document.body.appendChild(a)
     a.click()
-    window.URL.revokeObjectURL(url)
-    document.body.removeChild(a)
+    // 延迟回收：立即 revoke 会与下载产生竞态，导致文件名丢失（变成 blob UUID）
+    setTimeout(() => {
+      window.URL.revokeObjectURL(url)
+      if (a.parentNode) document.body.removeChild(a)
+    }, 1500)
 
     ElMessage.success(`${getFormatName(format)}报告下载成功`)
   } catch (error: any) {

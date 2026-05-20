@@ -178,7 +178,8 @@ def create_news_analyst(llm, toolkit):
                     "\n您可以访问以下工具：{tool_names}。"
                     "\n标的约束：{instrument_context}"
                     "\n{system_message}"
-                    "\n供您参考，当前日期是{current_date}。我们正在查看公司{ticker}。"
+                    "\n供您参考，当前日期是{current_date}。我们正在查看公司 {company_name}（股票代码：{ticker}）。"
+                    "\n⚠️ 股票代码 {ticker} 对应的公司就是「{company_name}」，请严格以此为准，绝对不允许凭记忆猜测或编造成其他公司。"
                     "\n请按照上述要求执行，用中文撰写所有分析内容。",
                 ),
                 MessagesPlaceholder(variable_name="messages"),
@@ -189,8 +190,9 @@ def create_news_analyst(llm, toolkit):
         prompt = prompt.partial(tool_names=", ".join([tool.name for tool in tools]))
         prompt = prompt.partial(current_date=current_date)
         prompt = prompt.partial(ticker=ticker)
+        prompt = prompt.partial(company_name=company_name)
         prompt = prompt.partial(instrument_context=instrument_context)
-        
+
         # 获取模型信息用于统一新闻工具的特殊处理
         model_info = ""
         try:

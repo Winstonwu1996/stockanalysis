@@ -168,7 +168,10 @@ def create_social_media_analyst(llm, toolkit):
                     " 如果您或任何其他助手有最终交易提案：**买入/持有/卖出**或可交付成果，"
                     " 请在您的回应前加上最终交易提案：**买入/持有/卖出**，以便团队知道停止。"
                     " 您可以访问以下工具：{tool_names}。\n标的约束：{instrument_context}\n{system_message}"
-                    "供您参考，当前日期是{current_date}。我们要分析的当前公司是{ticker}。请用中文撰写所有分析内容。",
+                    "供您参考，当前日期是{current_date}。我们要分析的当前公司是 {company_name}（股票代码：{ticker}）。"
+                    "⚠️ 该股票代码 {ticker} 对应的公司就是「{company_name}」，请严格以此为准，"
+                    "绝对不允许凭记忆猜测或编造成其他公司。若情绪数据获取受限，只能就「{company_name}」做有依据的分析或如实说明数据不足，"
+                    "禁止张冠李戴到其它公司。请用中文撰写所有分析内容。",
                 ),
                 MessagesPlaceholder(variable_name="messages"),
             ]
@@ -188,6 +191,7 @@ def create_social_media_analyst(llm, toolkit):
         prompt = prompt.partial(tool_names=", ".join(tool_names))
         prompt = prompt.partial(current_date=current_date)
         prompt = prompt.partial(ticker=ticker)
+        prompt = prompt.partial(company_name=company_name)
         prompt = prompt.partial(instrument_context=instrument_context)
 
         chain = prompt | llm.bind_tools(tools)

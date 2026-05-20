@@ -20,6 +20,8 @@ services:
       - ./config:/app/config
       # 数据目录映射
       - ./data:/app/data
+      # 核心分析引擎代码映射 (改 Python 代码后重启即可生效, 无需重建镜像)
+      - ./tradingagents:/app/tradingagents
     env_file:
       - .env
     environment:

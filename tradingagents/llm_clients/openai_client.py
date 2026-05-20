@@ -72,6 +72,15 @@ class OpenAIClient(BaseLLMClient):
             if key in self.kwargs:
                 llm_kwargs[key] = self.kwargs[key]
 
+        # 🔧 DeepSeek V4 (deepseek-v4-pro/flash) 默认开启"思考模式"(reasoning_content)。
+        # 本框架走多轮工具调用 (ReAct)，中间轮不会把 reasoning_content 回传，会触发
+        # 400: "The reasoning_content in the thinking mode must be passed back to the API."
+        # 因此对 DeepSeek 默认关闭思考模式，保证工具调用闭环可用。
+        if self.provider == "deepseek":
+            extra_body = dict(self.kwargs.get("extra_body") or {})
+            extra_body.setdefault("thinking", {"type": "disabled"})
+            llm_kwargs["extra_body"] = extra_body
+
         return NormalizedChatOpenAI(**llm_kwargs)
 
     def validate_model(self) -> bool:

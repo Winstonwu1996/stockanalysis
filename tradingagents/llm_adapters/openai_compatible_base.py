@@ -196,7 +196,7 @@ class OpenAICompatibleBase(ChatOpenAI):
 
 class ChatDeepSeekOpenAI(OpenAICompatibleBase):
     """DeepSeek OpenAI兼容适配器"""
-    
+
     def __init__(
         self,
         model: str = "deepseek-chat",
@@ -205,6 +205,16 @@ class ChatDeepSeekOpenAI(OpenAICompatibleBase):
         max_tokens: Optional[int] = None,
         **kwargs
     ):
+        # 🔧 DeepSeek V4 (deepseek-v4-pro/flash) 默认开启"思考模式"(reasoning_content)。
+        # 本框架是多轮工具调用 (ReAct), 中间轮不会把 reasoning_content 回传, 会触发
+        # 400: "The reasoning_content in the thinking mode must be passed back to the API."
+        # 因此对 DeepSeek 默认关闭思考模式, 保证工具调用闭环可用。
+        # (若调用方显式传了 extra_body, 以调用方的 thinking 设置为准, 不覆盖)
+        extra_body = kwargs.pop("extra_body", None) or {}
+        if "thinking" not in extra_body:
+            extra_body["thinking"] = {"type": "disabled"}
+        kwargs["extra_body"] = extra_body
+
         super().__init__(
             provider_name="deepseek",
             model=model,

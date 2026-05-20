@@ -1011,8 +1011,9 @@ class AKShareProvider(BaseStockDataProvider):
             start_date_formatted = start_date.replace('-', '')
             end_date_formatted = end_date.replace('-', '')
 
-            # 获取历史数据
-            def fetch_historical_data():
+            # 获取历史数据（多源回退：东方财富 stock_zh_a_hist 常被海外 IP 墙，
+            # 失败时回退到新浪 stock_zh_a_daily）
+            def fetch_from_eastmoney():
                 return self.ak.stock_zh_a_hist(
                     symbol=code,
                     period=ak_period,
@@ -1021,7 +1022,47 @@ class AKShareProvider(BaseStockDataProvider):
                     adjust="qfq"  # 前复权
                 )
 
-            hist_df = await asyncio.to_thread(fetch_historical_data)
+            def fetch_from_sina():
+                # 新浪需要带交易所前缀；只支持日线
+                if ak_period != "daily":
+                    return None
+                c = str(code).zfill(6)
+                if c.startswith('6') or c.startswith('9'):
+                    sina_sym = 'sh' + c
+                elif c.startswith(('4', '8')):
+                    sina_sym = 'bj' + c
+                else:
+                    sina_sym = 'sz' + c
+                df = self.ak.stock_zh_a_daily(symbol=sina_sym, adjust="qfq")
+                if df is None or df.empty:
+                    return None
+                # 按日期范围过滤
+                df = df.copy()
+                df['date'] = df['date'].astype(str)
+                df = df[(df['date'] >= start_date) & (df['date'] <= end_date)]
+                # 新浪英文列名 -> 东财中文列名（供下游 _standardize_historical_columns 统一）
+                df = df.rename(columns={
+                    'date': '日期', 'open': '开盘', 'close': '收盘',
+                    'high': '最高', 'low': '最低', 'volume': '成交量',
+                    'amount': '成交额', 'turnover': '换手率'
+                })
+                if '收盘' in df.columns:
+                    df['涨跌幅'] = (df['收盘'].pct_change() * 100).round(2)
+                return df
+
+            hist_df = None
+            try:
+                hist_df = await asyncio.to_thread(fetch_from_eastmoney)
+            except Exception as em_err:
+                logger.warning(f"⚠️ 东方财富历史数据失败({str(em_err)[:80]})，回退新浪")
+            if hist_df is None or getattr(hist_df, 'empty', True):
+                logger.warning(f"⚠️ {code} 东方财富历史数据为空/失败，回退新浪源")
+                try:
+                    hist_df = await asyncio.to_thread(fetch_from_sina)
+                    if hist_df is not None and not hist_df.empty:
+                        logger.info(f"✅ {code} 新浪源历史数据获取成功: {len(hist_df)}条")
+                except Exception as sina_err:
+                    logger.error(f"❌ 新浪历史数据也失败({str(sina_err)[:80]})")
 
             if hist_df is None or hist_df.empty:
                 logger.warning(f"⚠️ {code}历史数据为空")

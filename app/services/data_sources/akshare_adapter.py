@@ -208,17 +208,31 @@ class AKShareAdapter(DataSourceAdapter):
         try:
             import akshare as ak  # type: ignore
 
-            # 根据 source 参数选择接口
-            if source == "sina":
-                df = ak.stock_zh_a_spot()  # 新浪财经接口
-                logger.info("使用 AKShare 新浪财经接口获取实时行情")
-            else:  # 默认使用东方财富
-                df = ak.stock_zh_a_spot_em()  # 东方财富接口
-                logger.info("使用 AKShare 东方财富接口获取实时行情")
+            # 数据源多源回退：东方财富实时行情常被海外 IP 墙(502/连接断开)，
+            # 自动回退到新浪。请求指定的源优先，其余作为后备。
+            source_order = ["sina", "eastmoney"] if source == "sina" else ["eastmoney", "sina"]
+            df = None
+            used_source = None
+            for src in source_order:
+                try:
+                    if src == "sina":
+                        df = ak.stock_zh_a_spot()  # 新浪财经接口
+                    else:
+                        df = ak.stock_zh_a_spot_em()  # 东方财富接口
+                    if df is not None and not getattr(df, "empty", True):
+                        used_source = src
+                        logger.info(f"✅ 使用 AKShare {src} 接口获取实时行情成功")
+                        break
+                    logger.warning(f"AKShare {src} 返回空数据，尝试下一个源")
+                    df = None
+                except Exception as se:
+                    logger.warning(f"AKShare {src} 实时接口失败({str(se)[:80]})，回退下一个源")
+                    df = None
 
-            if df is None or getattr(df, "empty", True):
-                logger.warning(f"AKShare {source} 返回空数据")
+            if df is None:
+                logger.error("所有 AKShare 实时数据源(东方财富/新浪)均失败")
                 return None
+            source = used_source  # 后续日志用实际命中的源
 
             # 列名兼容（两个接口的列名可能不同）
             code_col = next((c for c in ["代码", "code", "symbol", "股票代码"] if c in df.columns), None)

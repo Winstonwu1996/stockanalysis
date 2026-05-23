@@ -115,6 +115,50 @@ const routes: RouteRecordRaw[] = [
     ]
   },
   {
+    path: '/slowbull',
+    name: 'Slowbull',
+    component: () => import('@/layouts/BasicLayout.vue'),
+    meta: {
+      title: '慢牛策略',
+      icon: 'TrendCharts',
+      requiresAuth: true,
+      transition: 'slide-up'
+    },
+    children: [
+      {
+        path: '',
+        name: 'SlowbullHome',
+        component: () => import('@/views/Slowbull/index.vue'),
+        meta: {
+          title: '慢牛策略',
+          requiresAuth: true
+        }
+      }
+    ]
+  },
+  {
+    path: '/billing',
+    name: 'Billing',
+    component: () => import('@/layouts/BasicLayout.vue'),
+    meta: {
+      title: '会员中心',
+      icon: 'GoldMedal',
+      requiresAuth: true,
+      transition: 'slide-up'
+    },
+    children: [
+      {
+        path: '',
+        name: 'BillingHome',
+        component: () => import('@/views/Billing/index.vue'),
+        meta: {
+          title: '会员中心',
+          requiresAuth: true
+        }
+      }
+    ]
+  },
+  {
     path: '/learning',
     name: 'Learning',
     component: () => import('@/layouts/BasicLayout.vue'),

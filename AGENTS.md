@@ -5,30 +5,65 @@
 
 ## Project Overview
 
-stockanalysis — 暂时不确定.
+**W-Agents**（产品对外名；代码/仓库名仍是 stockanalysis）—— A 股个股多智能体分析系统，
+fork 自开源 [TradingAgents-CN](https://github.com/hsliuping/TradingAgents-CN)。
+目标：整合 quant-slowbull 慢牛策略，部署 `bull.knowulearning.com`，对外卖会员（SaaS）。
 
-自己使用的股票分析系统
+- 多 Agent 协作：市场/基本面/新闻/社媒分析师 + 多空研究员辩论 + 交易员 + 风控。
+- 用户输入 A 股代码 → 生成分析报告（可下载 md/Word/PDF、可对报告追问讨论）。
+- **品牌**：UI 一律显示 **W-Agents**（不显示 TradingAgents；保留 About/学习中心对开源项目的归属，许可证合规）。
+
+### 技术栈
+- 前端：Vue 3 + TypeScript + Element Plus + Vite，nginx 静态托管 → 容器 `:3000`
+- 后端：FastAPI (Python 3.10) → 容器 `:8000`
+- 存储：MongoDB（账号/报告/配置/缓存）+ Redis
+- 部署：Docker Compose（本地 MacMini）；上线走 Cloudflare Tunnel（同 slowbull）
+- LLM：默认 **DeepSeek V4**（deep=deepseek-v4-pro / quick=deepseek-v4-flash），可选 Qwen / Claude
+- A 股数据：AKShare（免费，爬东方财富/新浪/同花顺）；上线收费时计划接 Tushare Pro（见 STATE.md 待办）
 
 ## Boundaries (3 层)
 
 ### Must (必须保持)
-- (项目落地后填: 必须保持不破坏的 API/契约/数据形状)
+- **数据源海外IP容错**：东方财富(eastmoney)实时+历史接口对海外 IP 会 502/断连，必须保留新浪兜底
+  (`tradingagents/dataflows/providers/china/akshare.py` get_historical_data；`app/services/data_sources/akshare_adapter.py`)。
+- **财报三大报表需带交易所前缀**：`stock_{balance,profit,cash}_sheet_by_report_em` 要 `SH/SZ/BJ` 前缀，裸代码返回 None。
+- **DeepSeek 关思考模式**：V4 思考模式与多轮工具调用不兼容，`openai_client.py` 对 deepseek 注入 `extra_body={"thinking":{"type":"disabled"}}`，勿删。
+- **固定 Mongo 库名**：docker-compose 设 `MONGODB_DATABASE_SCOPE=explicit` + 库名 `tradingagentscn`，否则 auto 模式按容器ID生成哈希导致重启丢账号。
+- **PDF 导出过 pikepdf**：wkhtmltopdf 偶发页面树损坏(/Count=0)，`report_exporter._normalize_pdf` 必须保留。
+- **viewer 安全模式**：非 admin 不得看到管理界面（系统配置/模型/密钥）；侧栏 `v-if=isAdmin` + 路由守卫。
 
 ### Ask First (问 William 才动)
-- 加新依赖
-- schema / migration
-- 主版本升级
-- 平台账号 / 密钥相关
+- 加新依赖 / schema migration / 主版本升级 / 平台账号·密钥相关
+- 改默认大模型 / 数据源主备策略
 
 ### Never (绝对不动)
-- 提交 secrets (`.env*` / 任何 key)
+- 提交 secrets (`.env*` / 任何 key) — 已 gitignore
 - 改 `vendor/` / `node_modules/`
-- 直接 push main (必须 PR)
+- 公网部署 / 真实收款 / 改定价 → 红线，走严肃模式 + William 亲自配 CF/Stripe
 
 ## Commands
 
 ```bash
-# (项目落地后填: 启动 / 构建 / 测试 命令)
+cd ~/projects/stockanalysis
+
+# 启动全套 (MongoDB+Redis+backend+frontend)
+docker compose up -d
+
+# 改了 Python 后端代码 (app/ 或 tradingagents/) → 重启即可 (代码已挂载, 无需重建)
+docker compose restart backend
+
+# 改了前端 Vue 代码 → 必须重建镜像 (Vite 编译)
+docker compose build frontend && docker compose up -d frontend
+
+# 改了后端依赖 (requirements.txt) → 重建后端镜像
+docker compose build backend && docker compose up -d backend
+
+# 看日志 / 健康
+docker logs --since 2m tradingagents-backend 2>&1 | tail -30
+docker inspect tradingagents-backend --format='{{.State.Health.Status}}'
+
+# 默认账号: admin/admin123 (管理员), member/member123 (普通会员, 测 viewer 模式)
+# 访问: http://localhost:3000
 ```
 
 ## Pointers

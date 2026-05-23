@@ -42,6 +42,16 @@
       <template #title>我的自选股</template>
     </el-menu-item>
 
+    <el-menu-item index="/slowbull">
+      <el-icon><TrendCharts /></el-icon>
+      <template #title>慢牛策略</template>
+    </el-menu-item>
+
+    <el-menu-item index="/billing">
+      <el-icon><GoldMedal /></el-icon>
+      <template #title>会员中心</template>
+    </el-menu-item>
+
     <el-menu-item index="/paper">
       <el-icon><CreditCard /></el-icon>
       <template #title>模拟交易</template>
@@ -113,7 +123,8 @@ import {
   /* Document 移除：不再使用顶级分析报告菜单图标 */
   Setting,
   InfoFilled,
-  CreditCard
+  CreditCard,
+  GoldMedal
 } from '@element-plus/icons-vue'
 
 const route = useRoute()

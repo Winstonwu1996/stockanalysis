@@ -706,6 +706,10 @@ app.include_router(logs.router, prefix="/api/system", tags=["logs"])
 from app.routers import system_config as system_config_router
 app.include_router(system_config_router.router, prefix="/api/system", tags=["system"])
 
+# 计费 / 会员（SaaS 收费骨架；未配置 Stripe 时不影响其它功能）
+from app.routers import billing as billing_router
+app.include_router(billing_router.router, tags=["billing"])
+
 # 通知模块（REST + SSE）
 app.include_router(notifications_router.router, prefix="/api", tags=["notifications"])
 
